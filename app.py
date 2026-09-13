@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Flask, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -112,6 +112,61 @@ def logout():
     return redirect(url_for("login"))
 
 
+def resolve_profile_date_filter(args):
+    """Resolve the /profile date-range filter from query args.
+
+    Falls back to "no filter" (all-time) whenever start/end are missing,
+    only one is supplied, or either fails to parse as YYYY-MM-DD. An end
+    date before a start date is intentionally not special-cased here: it is
+    passed through to the SQL BETWEEN clause, which naturally matches zero
+    rows when end < start.
+    """
+    today = datetime.now().date()
+
+    month_start = today.replace(day=1)
+    month_range = {"start": month_start.isoformat(), "end": today.isoformat()}
+
+    last30_start = today - timedelta(days=29)
+    last30_range = {"start": last30_start.isoformat(), "end": today.isoformat()}
+
+    def _is_valid_date(value):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
+
+    raw_start = (args.get("start") or "").strip()
+    raw_end = (args.get("end") or "").strip()
+    start_ok = bool(raw_start) and _is_valid_date(raw_start)
+    end_ok = bool(raw_end) and _is_valid_date(raw_end)
+
+    filter_active = start_ok and end_ok
+
+    if filter_active:
+        start, end = raw_start, raw_end
+        if (start, end) == (month_range["start"], month_range["end"]):
+            active_preset = "month"
+        elif (start, end) == (last30_range["start"], last30_range["end"]):
+            active_preset = "last30"
+        else:
+            active_preset = "custom"
+    else:
+        start, end = None, None
+        active_preset = "all"
+
+    return {
+        "filter_active": filter_active,
+        "start": start,
+        "end": end,
+        "active_preset": active_preset,
+        "month_range": month_range,
+        "last30_range": last30_range,
+        "form_start": raw_start if start_ok else "",
+        "form_end": raw_end if end_ok else "",
+    }
+
+
 @app.route("/profile")
 def profile():
     if not session.get("user_id"):
@@ -119,6 +174,10 @@ def profile():
 
     db = get_db()
     user_id = session["user_id"]
+
+    date_filter = resolve_profile_date_filter(request.args)
+    date_clause = " AND date BETWEEN ? AND ?" if date_filter["filter_active"] else ""
+    date_params = (date_filter["start"], date_filter["end"]) if date_filter["filter_active"] else ()
 
     # === SECTION: SUMMARY (owned by Subagent 2) ===
     user_row = db.execute(
@@ -141,22 +200,23 @@ def profile():
     }
 
     total_row = db.execute(
-        "SELECT SUM(amount) AS total, COUNT(*) AS count FROM expenses WHERE user_id = ?",
-        (user_id,),
+        f"SELECT SUM(amount) AS total, COUNT(*) AS count FROM expenses "
+        f"WHERE user_id = ?{date_clause}",
+        (user_id,) + date_params,
     ).fetchone()
     total_spent = total_row["total"] or 0
     transaction_count = total_row["count"] or 0
 
     top_category_row = db.execute(
-        """
+        f"""
         SELECT category
         FROM expenses
-        WHERE user_id = ?
+        WHERE user_id = ?{date_clause}
         GROUP BY category
         ORDER BY SUM(amount) DESC
         LIMIT 1
         """,
-        (user_id,),
+        (user_id,) + date_params,
     ).fetchone()
     top_category = top_category_row["category"] if top_category_row else "—"
 
@@ -168,9 +228,10 @@ def profile():
 
     # === SECTION: TRANSACTIONS (owned by Subagent 1) ===
     rows = db.execute(
-        "SELECT date, description, category, amount FROM expenses "
-        "WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 10",
-        (user_id,),
+        f"SELECT date, description, category, amount FROM expenses "
+        f"WHERE user_id = ?{date_clause} "
+        f"ORDER BY date DESC, id DESC LIMIT 10",
+        (user_id,) + date_params,
     ).fetchall()
 
     transactions = [
@@ -185,9 +246,10 @@ def profile():
 
     # === SECTION: CATEGORY BREAKDOWN (owned by Subagent 3) ===
     rows = db.execute(
-        "SELECT category, SUM(amount) AS total FROM expenses "
-        "WHERE user_id = ? GROUP BY category ORDER BY total DESC",
-        (user_id,),
+        f"SELECT category, SUM(amount) AS total FROM expenses "
+        f"WHERE user_id = ?{date_clause} "
+        f"GROUP BY category ORDER BY total DESC",
+        (user_id,) + date_params,
     ).fetchall()
 
     grand_total = sum(row["total"] for row in rows)
@@ -217,6 +279,7 @@ def profile():
         stats=stats,
         transactions=transactions,
         categories=categories,
+        date_filter=date_filter,
     )
 
 
