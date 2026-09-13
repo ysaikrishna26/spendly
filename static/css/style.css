@@ -294,9 +294,11 @@ a { color: inherit; text-decoration: none; }
     border-radius: 999px;
 }
 
-.progress-bar-food { width: 78%; background: #e8a33d; }
-.progress-bar-travel { width: 52%; background: #4d79c7; }
-.progress-bar-bills { width: 42%; background: #7a5fc4; }
+.progress-bar-food { background: var(--accent-2); }
+.progress-bar-bills { background: var(--danger); }
+.progress-bar-shopping { background: var(--accent-2); }
+.progress-bar-health { background: var(--accent); }
+.progress-bar-other { background: var(--ink-soft); }
 
 /* ------------------------------------------------------------------ */
 /* "See how it works" video modal                                     */
@@ -776,8 +778,8 @@ a { color: inherit; text-decoration: none; }
     font-variant-numeric: tabular-nums;
 }
 
-.progress-bar-transport { width: 30%; background: var(--accent); }
-.progress-bar-entertainment { width: 22%; background: var(--ink-faint); }
+.progress-bar-transport { background: var(--accent); }
+.progress-bar-entertainment { background: var(--ink-faint); }
 
 @media (max-width: 720px) {
     .profile-stats { grid-template-columns: 1fr; }
