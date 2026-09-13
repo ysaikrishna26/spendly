@@ -48,4 +48,4 @@ No new dependencies. Uses `werkzeug.security.generate_password_hash` (already a 
 - [ ] Submitting with a missing name, missing email, or password under 8 characters re-renders the form with an error message and does not create a row
 - [ ] Re-rendered form after an error keeps the previously typed name and email in the inputs
 - [ ] No plaintext passwords appear anywhere in `expense_tracker.db`
-- [ ] App starts and runs without errors via `python app.py`
+- [ ] App starts and runs without errors via `python3 app.py`
