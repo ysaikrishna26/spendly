@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 from flask import Flask, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -116,36 +117,99 @@ def profile():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
-    name = session.get("user_name", "")
-    initials = "".join(part[0].upper() for part in name.split()[:2]) or "?"
+    db = get_db()
+    user_id = session["user_id"]
+
+    # === SECTION: SUMMARY (owned by Subagent 2) ===
+    user_row = db.execute(
+        "SELECT name, email, created_at FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+
+    name = user_row["name"] or ""
+    name_parts = name.split()
+    initials = "".join(part[0].upper() for part in name_parts[:2]) or "?"
+    member_since = datetime.strptime(
+        user_row["created_at"], "%Y-%m-%d %H:%M:%S"
+    ).strftime("%B %Y")
 
     user = {
         "name": name,
-        "email": session.get("user_email", ""),
+        "email": user_row["email"],
         "initials": initials,
-        "member_since": "September 2026",
+        "member_since": member_since,
     }
 
+    total_row = db.execute(
+        "SELECT SUM(amount) AS total, COUNT(*) AS count FROM expenses WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    total_spent = total_row["total"] or 0
+    transaction_count = total_row["count"] or 0
+
+    top_category_row = db.execute(
+        """
+        SELECT category
+        FROM expenses
+        WHERE user_id = ?
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+    top_category = top_category_row["category"] if top_category_row else "—"
+
     stats = [
-        {"label": "Total Spent", "value": "$292.54"},
-        {"label": "Transactions", "value": "8"},
-        {"label": "Top Category", "value": "Food"},
+        {"label": "Total Spent", "value": f"₹{total_spent:.2f}"},
+        {"label": "Transactions", "value": str(transaction_count)},
+        {"label": "Top Category", "value": top_category},
     ]
+
+    # === SECTION: TRANSACTIONS (owned by Subagent 1) ===
+    rows = db.execute(
+        "SELECT date, description, category, amount FROM expenses "
+        "WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 10",
+        (user_id,),
+    ).fetchall()
 
     transactions = [
-        {"date": "Sep 15, 2026", "description": "Dinner out", "category": "Food", "amount": "$22.30"},
-        {"date": "Sep 11, 2026", "description": "New shoes", "category": "Shopping", "amount": "$60.75"},
-        {"date": "Sep 8, 2026", "description": "Movie tickets", "category": "Entertainment", "amount": "$25.00"},
-        {"date": "Sep 5, 2026", "description": "Electricity bill", "category": "Bills", "amount": "$89.99"},
-        {"date": "Sep 3, 2026", "description": "Metro card top-up", "category": "Transport", "amount": "$12.00"},
+        {
+            "date": datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y"),
+            "description": row["description"],
+            "category": row["category"],
+            "amount": f"₹{row['amount']:.2f}",
+        }
+        for row in rows
     ]
 
-    categories = [
-        {"name": "Food", "amount": "$67.80", "modifier": "progress-bar-food"},
-        {"name": "Bills", "amount": "$89.99", "modifier": "progress-bar-bills"},
-        {"name": "Transport", "amount": "$12.00", "modifier": "progress-bar-transport"},
-        {"name": "Entertainment", "amount": "$25.00", "modifier": "progress-bar-entertainment"},
-    ]
+    # === SECTION: CATEGORY BREAKDOWN (owned by Subagent 3) ===
+    rows = db.execute(
+        "SELECT category, SUM(amount) AS total FROM expenses "
+        "WHERE user_id = ? GROUP BY category ORDER BY total DESC",
+        (user_id,),
+    ).fetchall()
+
+    grand_total = sum(row["total"] for row in rows)
+
+    categories = []
+    if grand_total:
+        pcts = [round((row["total"] / grand_total) * 100) for row in rows]
+
+        remainder = 100 - sum(pcts)
+        if remainder:
+            largest_idx = max(range(len(rows)), key=lambda i: rows[i]["total"])
+            pcts[largest_idx] += remainder
+
+        for row, pct in zip(rows, pcts):
+            categories.append({
+                "name": row["category"],
+                "amount": f"₹{row['total']:.2f}",
+                "modifier": "progress-bar-" + row["category"].lower(),
+                "pct": pct,
+            })
+
+    db.close()
 
     return render_template(
         "profile.html",
