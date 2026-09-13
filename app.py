@@ -86,8 +86,9 @@ def login():
 
     session["user_id"] = user["id"]
     session["user_name"] = user["name"]
+    session["user_email"] = email
 
-    return redirect(url_for("landing"))
+    return redirect(url_for("profile"))
 
 
 @app.route("/terms")
@@ -112,7 +113,47 @@ def logout():
 
 @app.route("/profile")
 def profile():
-    return "Profile page — coming in Step 4"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    name = session.get("user_name", "")
+    initials = "".join(part[0].upper() for part in name.split()[:2]) or "?"
+
+    user = {
+        "name": name,
+        "email": session.get("user_email", ""),
+        "initials": initials,
+        "member_since": "September 2026",
+    }
+
+    stats = [
+        {"label": "Total Spent", "value": "$292.54"},
+        {"label": "Transactions", "value": "8"},
+        {"label": "Top Category", "value": "Food"},
+    ]
+
+    transactions = [
+        {"date": "Sep 15, 2026", "description": "Dinner out", "category": "Food", "amount": "$22.30"},
+        {"date": "Sep 11, 2026", "description": "New shoes", "category": "Shopping", "amount": "$60.75"},
+        {"date": "Sep 8, 2026", "description": "Movie tickets", "category": "Entertainment", "amount": "$25.00"},
+        {"date": "Sep 5, 2026", "description": "Electricity bill", "category": "Bills", "amount": "$89.99"},
+        {"date": "Sep 3, 2026", "description": "Metro card top-up", "category": "Transport", "amount": "$12.00"},
+    ]
+
+    categories = [
+        {"name": "Food", "amount": "$67.80", "modifier": "progress-bar-food"},
+        {"name": "Bills", "amount": "$89.99", "modifier": "progress-bar-bills"},
+        {"name": "Transport", "amount": "$12.00", "modifier": "progress-bar-transport"},
+        {"name": "Entertainment", "amount": "$25.00", "modifier": "progress-bar-entertainment"},
+    ]
+
+    return render_template(
+        "profile.html",
+        user=user,
+        stats=stats,
+        transactions=transactions,
+        categories=categories,
+    )
 
 
 @app.route("/expenses/add")
