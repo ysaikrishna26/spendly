@@ -112,6 +112,17 @@ def logout():
     return redirect(url_for("login"))
 
 
+def _is_valid_date(value):
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+EXPENSE_CATEGORIES = ["Food", "Transport", "Bills", "Health", "Entertainment", "Shopping", "Other"]
+
+
 def resolve_profile_date_filter(args):
     """Resolve the /profile date-range filter from query args.
 
@@ -128,13 +139,6 @@ def resolve_profile_date_filter(args):
 
     last30_start = today - timedelta(days=29)
     last30_range = {"start": last30_start.isoformat(), "end": today.isoformat()}
-
-    def _is_valid_date(value):
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-            return True
-        except ValueError:
-            return False
 
     raw_start = (args.get("start") or "").strip()
     raw_end = (args.get("end") or "").strip()
@@ -291,9 +295,56 @@ def analytics():
     return render_template("analytics.html")
 
 
-@app.route("/expenses/add")
+@app.route("/expenses/add", methods=["GET", "POST"])
 def add_expense():
-    return "Add expense — coming in Step 7"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    today = datetime.now().date().isoformat()
+
+    if request.method == "GET":
+        return render_template("add_expense.html", categories=EXPENSE_CATEGORIES, today=today)
+
+    amount_raw = request.form.get("amount", "").strip()
+    category = request.form.get("category", "").strip()
+    date = request.form.get("date", "").strip()
+    description = request.form.get("description", "").strip()
+
+    try:
+        amount = float(amount_raw)
+    except ValueError:
+        amount = None
+
+    if amount is None or amount <= 0:
+        return render_template(
+            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            error="Enter a valid amount greater than zero.",
+            amount=amount_raw, category=category, date=date, description=description,
+        )
+
+    if not category or category not in EXPENSE_CATEGORIES:
+        return render_template(
+            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            error="Select a valid category.",
+            amount=amount_raw, category=category, date=date, description=description,
+        )
+
+    if not date or not _is_valid_date(date):
+        return render_template(
+            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            error="Enter a valid date.",
+            amount=amount_raw, category=category, date=date, description=description,
+        )
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO expenses (user_id, amount, category, date, description) VALUES (?, ?, ?, ?, ?)",
+        (session["user_id"], amount, category, date, description or None),
+    )
+    db.commit()
+    db.close()
+
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/edit")
