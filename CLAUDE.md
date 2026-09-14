@@ -10,10 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Setup (venv/ already exists in repo checkout)
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 
 # Run the dev server (port 5001, debug mode)
-python app.py
+python3 app.py
 
 # Run tests
 pytest
