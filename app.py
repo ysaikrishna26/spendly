@@ -18,6 +18,7 @@ with app.app_context():
 # Routes                                                              #
 # ------------------------------------------------------------------ #
 
+
 @app.route("/")
 def landing():
     return render_template("landing.html")
@@ -36,13 +37,25 @@ def register():
     password = request.form.get("password", "")
 
     if not name:
-        return render_template("register.html", error="Full name is required.", name=name, email=email)
+        return render_template(
+            "register.html", error="Full name is required.", name=name, email=email
+        )
 
     if not email or "@" not in email or "." not in email.split("@")[-1]:
-        return render_template("register.html", error="Enter a valid email address.", name=name, email=email)
+        return render_template(
+            "register.html",
+            error="Enter a valid email address.",
+            name=name,
+            email=email,
+        )
 
     if len(password) < 8:
-        return render_template("register.html", error="Password must be at least 8 characters.", name=name, email=email)
+        return render_template(
+            "register.html",
+            error="Password must be at least 8 characters.",
+            name=name,
+            email=email,
+        )
 
     db = get_db()
     existing = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
@@ -83,7 +96,9 @@ def login():
     db.close()
 
     if not user or not check_password_hash(user["password_hash"], password):
-        return render_template("login.html", error="Invalid email or password.", email=email)
+        return render_template(
+            "login.html", error="Invalid email or password.", email=email
+        )
 
     session["user_id"] = user["id"]
     session["user_name"] = user["name"]
@@ -106,6 +121,7 @@ def privacy():
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
 
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -120,7 +136,15 @@ def _is_valid_date(value):
         return False
 
 
-EXPENSE_CATEGORIES = ["Food", "Transport", "Bills", "Health", "Entertainment", "Shopping", "Other"]
+EXPENSE_CATEGORIES = [
+    "Food",
+    "Transport",
+    "Bills",
+    "Health",
+    "Entertainment",
+    "Shopping",
+    "Other",
+]
 
 
 def resolve_profile_date_filter(args):
@@ -181,7 +205,11 @@ def profile():
 
     date_filter = resolve_profile_date_filter(request.args)
     date_clause = " AND date BETWEEN ? AND ?" if date_filter["filter_active"] else ""
-    date_params = (date_filter["start"], date_filter["end"]) if date_filter["filter_active"] else ()
+    date_params = (
+        (date_filter["start"], date_filter["end"])
+        if date_filter["filter_active"]
+        else ()
+    )
 
     # === SECTION: SUMMARY (owned by Subagent 2) ===
     user_row = db.execute(
@@ -232,7 +260,7 @@ def profile():
 
     # === SECTION: TRANSACTIONS (owned by Subagent 1) ===
     rows = db.execute(
-        f"SELECT date, description, category, amount FROM expenses "
+        f"SELECT id, date, description, category, amount FROM expenses "
         f"WHERE user_id = ?{date_clause} "
         f"ORDER BY date DESC, id DESC LIMIT 10",
         (user_id,) + date_params,
@@ -240,6 +268,7 @@ def profile():
 
     transactions = [
         {
+            "id": row["id"],
             "date": datetime.strptime(row["date"], "%Y-%m-%d").strftime("%b %d, %Y"),
             "description": row["description"],
             "category": row["category"],
@@ -268,12 +297,14 @@ def profile():
             pcts[largest_idx] += remainder
 
         for row, pct in zip(rows, pcts):
-            categories.append({
-                "name": row["category"],
-                "amount": f"₹{row['total']:.2f}",
-                "modifier": "progress-bar-" + row["category"].lower(),
-                "pct": pct,
-            })
+            categories.append(
+                {
+                    "name": row["category"],
+                    "amount": f"₹{row['total']:.2f}",
+                    "modifier": "progress-bar-" + row["category"].lower(),
+                    "pct": pct,
+                }
+            )
 
     db.close()
 
@@ -303,7 +334,9 @@ def add_expense():
     today = datetime.now().date().isoformat()
 
     if request.method == "GET":
-        return render_template("add_expense.html", categories=EXPENSE_CATEGORIES, today=today)
+        return render_template(
+            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today
+        )
 
     amount_raw = request.form.get("amount", "").strip()
     category = request.form.get("category", "").strip()
@@ -317,23 +350,38 @@ def add_expense():
 
     if amount is None or amount <= 0:
         return render_template(
-            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            "add_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            today=today,
             error="Enter a valid amount greater than zero.",
-            amount=amount_raw, category=category, date=date, description=description,
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
         )
 
     if not category or category not in EXPENSE_CATEGORIES:
         return render_template(
-            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            "add_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            today=today,
             error="Select a valid category.",
-            amount=amount_raw, category=category, date=date, description=description,
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
         )
 
     if not date or not _is_valid_date(date):
         return render_template(
-            "add_expense.html", categories=EXPENSE_CATEGORIES, today=today,
+            "add_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            today=today,
             error="Enter a valid date.",
-            amount=amount_raw, category=category, date=date, description=description,
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
         )
 
     db = get_db()
@@ -347,9 +395,91 @@ def add_expense():
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    db = get_db()
+    expense = db.execute(
+        "SELECT id, amount, category, date, description FROM expenses WHERE id = ? AND user_id = ?",
+        (id, session["user_id"]),
+    ).fetchone()
+
+    if expense is None:
+        db.close()
+        return redirect(url_for("profile"))
+
+    if request.method == "GET":
+        db.close()
+        return render_template(
+            "edit_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            id=id,
+            amount=expense["amount"],
+            category=expense["category"],
+            date=expense["date"],
+            description=expense["description"],
+        )
+
+    amount_raw = request.form.get("amount", "").strip()
+    category = request.form.get("category", "").strip()
+    date = request.form.get("date", "").strip()
+    description = request.form.get("description", "").strip()
+
+    try:
+        amount = float(amount_raw)
+    except ValueError:
+        amount = None
+
+    if amount is None or amount <= 0:
+        db.close()
+        return render_template(
+            "edit_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            id=id,
+            error="Enter a valid amount greater than zero.",
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
+        )
+
+    if not category or category not in EXPENSE_CATEGORIES:
+        db.close()
+        return render_template(
+            "edit_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            id=id,
+            error="Select a valid category.",
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
+        )
+
+    if not date or not _is_valid_date(date):
+        db.close()
+        return render_template(
+            "edit_expense.html",
+            categories=EXPENSE_CATEGORIES,
+            id=id,
+            error="Enter a valid date.",
+            amount=amount_raw,
+            category=category,
+            date=date,
+            description=description,
+        )
+
+    db.execute(
+        "UPDATE expenses SET amount = ?, category = ?, date = ?, description = ? "
+        "WHERE id = ? AND user_id = ?",
+        (amount, category, date, description or None, id, session["user_id"]),
+    )
+    db.commit()
+    db.close()
+
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/delete")
