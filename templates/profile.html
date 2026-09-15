@@ -71,6 +71,11 @@
                             <a href="{{ url_for('edit_expense', id=tx.id) }}" class="table-edit-link" aria-label="Edit transaction">
                                 <i data-lucide="pencil"></i>
                             </a>
+                            <form method="post" action="{{ url_for('delete_expense', id=tx.id) }}" class="table-delete-form" data-confirm="Delete this transaction? This can't be undone.">
+                                <button type="submit" class="table-delete-btn" aria-label="Delete transaction">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}
