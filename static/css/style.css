@@ -859,6 +859,33 @@ a { color: inherit; text-decoration: none; }
     height: 16px;
 }
 
+.table-delete-form {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 0.6rem;
+}
+
+.table-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--ink-muted);
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.table-delete-btn:hover {
+    color: var(--danger);
+}
+
+.table-delete-btn i {
+    width: 16px;
+    height: 16px;
+}
+
 .category-badge {
     display: inline-block;
     padding: 0.3rem 0.75rem;
